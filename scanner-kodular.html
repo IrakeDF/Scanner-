@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&display=swap');
+
+  :root {
+    --bg: #080808;
+    --surface: #101010;
+    --border: #202020;
+    --accent: #b8955a;
+    --accent2: #d4aa70;
+    --danger: #a93226;
+    --success: #1e8449;
+    --text: #cccccc;
+    --muted: #444;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .screen { display:none; flex-direction:column; height:100dvh; }
+  .screen.active { display:flex; }
+
+  /* ── HOME ── */
+  #s-home {
+    align-items: center;
+    justify-content: center;
+    padding: 40px 28px;
+    background: radial-gradient(ellipse at 50% 30%, #1a1208 0%, #080808 70%);
+    gap: 0;
+  }
+
+  .home-symbol {
+    font-size: 52px;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 20px rgba(184,149,90,0.4));
+  }
+
+  .home-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 8px;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .home-sub {
+    font-size: 9px;
+    letter-spacing: 4px;
+    color: var(--muted);
+    margin-bottom: 48px;
+  }
+
+  .info-box {
+    width: 100%;
+    border: 1px solid var(--border);
+    padding: 16px;
+    margin-bottom: 32px;
+  }
+
+  .info-row {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    line-height: 2.2;
+  }
+  .info-row span { color: var(--accent); }
+
+  .btn-main {
+    width: 100%;
+    background: var(--accent);
+    color: #080808;
+    border: none;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 4px;
+    padding: 18px;
+    cursor: pointer;
+  }
+  .btn-main:active { background: var(--accent2); }
+
+  /* ── SCANNER ── */
+  #s-scan { position: relative; }
+
+  #video-wrap {
+    flex: 1;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+  }
+
+  #video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .corner { position:absolute; width:22px; height:22px; border-color:var(--accent); border-style:solid; opacity:.5; }
+  .corner.tl { top:12px; left:12px; border-width:2px 0 0 2px; }
+  .corner.tr { top:12px; right:12px; border-width:2px 2px 0 0; }
+  .corner.bl { bottom:12px; left:12px; border-width:0 0 2px 2px; }
+  .corner.br { bottom:12px; right:12px; border-width:0 2px 2px 0; }
+
+  .scan-line {
+    position:absolute; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    top: 30%; animation: scanMove 2.5s ease-in-out infinite; opacity:0;
+  }
+  .scan-line.on { opacity:1; }
+  @keyframes scanMove { 0%{top:15%} 50%{top:85%} 100%{top:15%} }
+
+  #hud {
+    position: absolute;
+    bottom: 0; left:0; right:0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+    padding: 40px 16px 14px;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #hud-count {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 40px;
+    color: var(--text);
+    line-height: 1;
+  }
+  #hud-count small { font-size:16px; color:var(--muted); }
+
+  #hud-status {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    min-height: 14px;
+    margin-top: 2px;
+  }
+
+  #scan-bar {
+    width: 0%;
+    height: 2px;
+    background: var(--accent);
+    transition: width 0.1s;
+    margin-top: 8px;
+  }
+
+  #controls {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-cap {
+    flex: 1;
+    background: var(--accent);
+    color: #080808;
+    border: none;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 17px;
+    letter-spacing: 2px;
+    padding: 14px;
+    cursor: pointer;
+  }
+  .btn-cap.busy { background: var(--danger); animation: blink 0.8s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .btn-cap:active { opacity:.85; }
+
+  .btn-sm {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing:1px;
+    padding: 14px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-sm:active { border-color:var(--accent); color:var(--accent); }
+
+  /* ── RESULTADO ── */
+  #s-result { padding: 24px 18px 18px; }
+
+  .res-header {
+    font-size: 9px; letter-spacing:4px; color:var(--muted); margin-bottom:4px;
+  }
+
+  .res-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 52px; color:var(--accent); line-height:1; margin-bottom:20px;
+  }
+  .res-num small { font-size:18px; color:var(--muted); }
+
+  .warn {
+    background: rgba(169,50,38,.12);
+    border: 1px solid var(--danger);
+    color: #c0392b;
+    font-size: 9px; letter-spacing:1px;
+    padding: 8px 12px; margin-bottom:12px;
+    display:none;
+  }
+
+  #cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4,1fr);
+    gap: 5px;
+    overflow-y: auto;
+    flex:1;
+    margin-bottom: 14px;
+  }
+  #cards-grid::-webkit-scrollbar { width:2px; }
+  #cards-grid::-webkit-scrollbar-thumb { background:var(--border); }
+
+  .chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 8px 2px;
+    text-align:center;
+    font-size:14px;
+    cursor:pointer;
+    transition: border-color .1s;
+  }
+  .chip:active { border-color:var(--accent); }
+  .chip .n { font-size:8px; color:var(--muted); display:block; margin-bottom:1px; letter-spacing:1px; }
+  .chip.red { color:#e74c3c; }
+  .chip.dup { border-color:var(--danger); background:rgba(169,50,38,.1); }
+
+  .res-actions { display:flex; gap:8px; flex-direction: column; }
+
+  .btn-confirm {
+    width:100%; background:var(--success); color:#fff; border:none;
+    font-family:'Bebas Neue',sans-serif; font-size:19px; letter-spacing:3px;
+    padding:16px; cursor:pointer;
+  }
+  .btn-confirm:active { opacity:.85; }
+
+  .btn-confirm.kodular {
+    background: #2471a3;
+  }
+
+  .btn-back {
+    background:transparent; border:1px solid var(--border); color:var(--muted);
+    font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px;
+    padding:14px; cursor:pointer; width:100%;
+  }
+
+  /* ── DIM ── */
+  #dim {
+    position:fixed; inset:0; background:#000;
+    z-index:999; display:none; cursor:pointer;
+  }
+  #dim.on { display:block; }
+
+  /* ── LOADING ── */
+  #loading {
+    position:fixed; inset:0; background:rgba(0,0,0,.88);
+    display:none; flex-direction:column;
+    align-items:center; justify-content:center; z-index:200;
+  }
+  #loading.on { display:flex; }
+  .spinner {
+    width:36px; height:36px;
+    border:2px solid var(--border); border-top-color:var(--accent);
+    border-radius:50%; animation:spin .7s linear infinite; margin-bottom:16px;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .load-txt { font-size:10px; letter-spacing:3px; color:var(--muted); }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 100px; left: 50%; transform: translateX(-50%);
+    background: var(--success);
+    color: #fff;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    z-index: 500;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #toast.on { opacity: 1; }
+
+  canvas { display:none; }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<div class="screen active" id="s-home">
+  <div class="home-symbol">♠</div>
+  <div class="home-title">CARD SCANNER</div>
+  <div class="home-sub">LEITURA DE BARALHO</div>
+  <div class="info-box">
+    <div class="info-row">✓ Sem chave de API necessária</div>
+    <div class="info-row">✓ Envia ordem direto ao <span>Kodular</span></div>
+    <div class="info-row">✓ Formato: <span>A♣, 4♥, 7♠, 10♦</span></div>
+    <div class="info-row">⚠ Boa iluminação é essencial</div>
+    <div class="info-row">⚠ Câmera próxima (~25cm das cartas)</div>
+  </div>
+  <button class="btn-main" onclick="startCamera()">INICIAR CÂMERA</button>
+</div>
+
+<!-- SCANNER -->
+<div class="screen" id="s-scan">
+  <div id="video-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div class="scan-line" id="scan-line"></div>
+    <div id="hud">
+      <div id="hud-count">0 <small>cartas</small></div>
+      <div id="hud-status">PRONTO</div>
+      <div id="scan-bar"></div>
+    </div>
+  </div>
+  <canvas id="cap-canvas"></canvas>
+  <div id="controls">
+    <button class="btn-cap" id="btn-cap" onclick="capture()">CAPTURAR</button>
+    <button class="btn-sm" onclick="toggleDim()">ESCURECER</button>
+    <button class="btn-sm" onclick="goResult()">VER ORDEM</button>
+  </div>
+</div>
+
+<!-- RESULTADO -->
+<div class="screen" id="s-result">
+  <div class="res-header">ORDEM DETECTADA</div>
+  <div class="res-num" id="res-num">0 <small>cartas</small></div>
+  <div class="warn" id="warn-dup">⚠ DUPLICATAS — TOQUE PARA REMOVER</div>
+  <div id="cards-grid"></div>
+  <div class="res-actions">
+    <button class="btn-confirm kodular" onclick="sendToKodular()">✓ ENVIAR PARA O APP</button>
+    <button class="btn-back" onclick="goScan()">← VOLTAR E CAPTURAR MAIS</button>
+  </div>
+</div>
+
+<!-- DIM / LOADING / TOAST -->
+<div id="dim" onclick="toggleDim()"></div>
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="load-txt" id="load-txt">CARREGANDO OCR...</div>
+</div>
+<div id="toast">ORDEM ENVIADA AO APP!</div>
+
+<script>
+// ════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════
+let stream = null;
+let worker = null;
+let busy = false;
+let deck = []; // [{code, label, red}]
+
+// Formato final: "A♣, 4♥, 7♠, 10♦"
+const SUIT_SYM = { S:'♠', C:'♣', H:'♥', D:'♦' };
+const VAL_LABELS = {1:'A',2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'J',12:'Q',13:'K'};
+
+const VAL_ALIASES = {
+  'A':1,'1':1,'ACE':1,
+  '2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,
+  '10':10,'T':10,
+  'J':11,'JACK':11,
+  'Q':12,'QUEEN':12,
+  'K':13,'KING':13
+};
+
+const SUIT_MAP = {
+  '♠':'S','♣':'C','♥':'H','♦':'D',
+  'S':'S','C':'C','H':'H','D':'D'
+};
+
+// ════════════════════════════════════════
+// OCR
+// ════════════════════════════════════════
+async function initOCR() {
+  setLoading(true, 'CARREGANDO OCR...');
+  try {
+    worker = await Tesseract.createWorker('eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round((m.progress || 0) * 100);
+          document.getElementById('scan-bar').style.width = pct + '%';
+          setLoading(true, `LENDO... ${pct}%`);
+        } else if (m.status) {
+          setLoading(true, m.status.toUpperCase().substring(0,25) + '...');
+        }
+      }
+    });
+    await worker.setParameters({
+      tessedit_char_whitelist: 'A23456789TJQK10♠♣♥♦SCHD',
+      tessedit_pageseg_mode: '6'
+    });
+    setLoading(false);
+  } catch(e) {
+    setLoading(false);
+    alert('Erro ao carregar OCR: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════
+// CÂMERA
+// ════════════════════════════════════════
+async function startCamera() {
+  // Tenta progressivamente configurações menos restritivas
+  const attempts = [
+    { video: { facingMode: 'environment' }, audio: false },
+    { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    { video: true, audio: false }
+  ];
+
+  for (const constraints of attempts) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      document.getElementById('video').srcObject = stream;
+      showScreen('s-scan');
+      await initOCR();
+      return;
+    } catch(e) {
+      console.warn('Tentativa falhou:', JSON.stringify(constraints), e.message);
+    }
+  }
+  alert('Câmera não disponível.\nVerifique as permissões do navegador.\n\nSe o problema persistir, tente abrir no Chrome.');
+}
+
+// ════════════════════════════════════════
+// CAPTURA
+// ════════════════════════════════════════
+async function capture() {
+  if (busy || !worker) return;
+  busy = true;
+
+  const btn = document.getElementById('btn-cap');
+  btn.classList.add('busy');
+  btn.textContent = 'LENDO...';
+  document.getElementById('scan-line').classList.add('on');
+  setStatus('PROCESSANDO...');
+
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('cap-canvas');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  const processed = preprocessCanvas(canvas);
+
+  try {
+    const { data: { text } } = await worker.recognize(processed);
+    const found = parseCards(text);
+    const added = mergeCards(found);
+    setStatus(`+${added} NOVAS  (${found.length} lidas nesta captura)`);
+    updateHUD();
+  } catch(e) {
+    setStatus('ERRO — TENTE NOVAMENTE');
+  }
+
+  document.getElementById('scan-bar').style.width = '0%';
+  btn.classList.remove('busy');
+  btn.textContent = 'CAPTURAR';
+  document.getElementById('scan-line').classList.remove('on');
+  busy = false;
+}
+
+// ════════════════════════════════════════
+// PRÉ-PROCESSAMENTO
+// ════════════════════════════════════════
+function preprocessCanvas(src) {
+  const dst = document.createElement('canvas');
+  dst.width = src.width * 2;
+  dst.height = src.height * 2;
+  const ctx = dst.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(src, 0, 0, dst.width, dst.height);
+  const imageData = ctx.getImageData(0, 0, dst.width, dst.height);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const v = gray > 160 ? 255 : 0;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return dst;
+}
+
+// ════════════════════════════════════════
+// PARSE OCR → CARTAS
+// ════════════════════════════════════════
+function parseCards(text) {
+  const cards = [];
+  const t = text.toUpperCase().replace(/[|l]/g,'1').replace(/\s+/g,' ');
+
+  const patterns = [
+    /\b(10|[AKQJT2-9])\s*([♠♣♥♦SCHD])\b/g,
+    /([♠♣♥♦])\s*(10|[AKQJT2-9])\b/g,
+  ];
+
+  for (const re of patterns) {
+    let m; re.lastIndex = 0;
+    while ((m = re.exec(t)) !== null) {
+      let [, a, b] = m;
+      let val = a, suit = b;
+      if (['♠','♣','♥','♦','S','C','H','D'].includes(a) && !VAL_ALIASES[a]) {
+        [val, suit] = [b, a];
+      }
+      const card = buildCard(val, suit);
+      if (card) cards.push(card);
+    }
+  }
+  return cards;
+}
+
+function buildCard(val, suit) {
+  val = (val||'').toUpperCase().trim();
+  suit = (suit||'').toUpperCase().trim();
+  const v = VAL_ALIASES[val];
+  if (!v) return null;
+  const s = SUIT_MAP[suit];
+  if (!s) return null;
+
+  // Formato exato: "A♣", "10♥", "K♠"
+  const label = VAL_LABELS[v] + SUIT_SYM[s];
+  const code  = VAL_LABELS[v] + s; // interno
+  const red   = ['H','D'].includes(s);
+  return { code, label, red };
+}
+
+// ════════════════════════════════════════
+// MERGE
+// ════════════════════════════════════════
+function mergeCards(newCards) {
+  const existing = new Set(deck.map(c => c.code));
+  let added = 0;
+  for (const c of newCards) {
+    if (!existing.has(c.code)) {
+      deck.push(c);
+      existing.add(c.code);
+      added++;
+    }
+  }
+  return added;
+}
+
+// ════════════════════════════════════════
+// ENVIAR PARA KODULAR
+// ════════════════════════════════════════
+function sendToKodular() {
+  if (deck.length === 0) { alert('Nenhuma carta detectada.'); return; }
+
+  // Formato: "A♣, 4♥, 7♠, 10♦"
+  const orderString = deck.map(c => c.label).join(', ');
+
+  // Tenta comunicar com Kodular via AppInventor bridge
+  try {
+    window.AppInventor.setWebViewString(orderString);
+    showToast('ORDEM ENVIADA AO APP!');
+  } catch(e) {
+    // Fora do Kodular — mostra para copiar
+    prompt('Copie a ordem (fora do app):', orderString);
+  }
+}
+
+// ════════════════════════════════════════
+// UI
+// ════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('hud-count').innerHTML = `${deck.length} <small>cartas</small>`;
+}
+
+function setStatus(t) { document.getElementById('hud-status').textContent = t; }
+
+function goResult() {
+  if (deck.length === 0) { alert('Nenhuma carta detectada ainda.'); return; }
+
+  const counts = {};
+  deck.forEach(c => counts[c.code] = (counts[c.code]||0)+1);
+  const hasDup = Object.values(counts).some(v => v > 1);
+
+  document.getElementById('res-num').innerHTML = `${deck.length} <small>cartas</small>`;
+  document.getElementById('warn-dup').style.display = hasDup ? 'block' : 'none';
+
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+  deck.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = `chip ${c.red?'red':'black'} ${counts[c.code]>1?'dup':''}`;
+    d.innerHTML = `<span class="n">${i+1}</span>${c.label}`;
+    d.onclick = () => { deck.splice(i,1); goResult(); };
+    grid.appendChild(d);
+  });
+
+  showScreen('s-result');
+}
+
+function goScan() { showScreen('s-scan'); }
+
+function toggleDim() { document.getElementById('dim').classList.toggle('on'); }
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function setLoading(on, txt) {
+  document.getElementById('loading').classList.toggle('on', on);
+  if (txt) document.getElementById('load-txt').textContent = txt;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  setTimeout(() => t.classList.remove('on'), 2500);
+}
+</script>
+</body>
+</html>
